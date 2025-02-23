@@ -11,5 +11,5 @@
   "builds": [
     { "src": "api/*.js", "use": "@vercel/node" }
   ],
-  "outputDirectory": "."
+  "outputDirectory": ""
 }
