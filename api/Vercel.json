@@ -1,6 +1,18 @@
 {
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/webhook.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/massage.js",
+      "use": "@vercel/node"
+    }
+  ],
   "routes": [
     { "src": "/api/webhook", "dest": "/api/webhook.js" },
     { "src": "/api/massage", "dest": "/api/massage.js" }
-  ]
-} 
+  ],
+  "installCommand": "npm install"
+}
