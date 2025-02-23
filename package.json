@@ -1,0 +1,20 @@
+{
+  "name": "paystack-webhook-handler",
+  "version": "1.0.0",
+  "main": "api/webhook.js",
+  "scripts": {
+    "start": "node api/webhook.js",
+    "start:massage": "node api/massage.js",
+    "build": "echo 'No build required'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^11.10.1",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.0.3",
+    "vercel": "^28.16.7"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
