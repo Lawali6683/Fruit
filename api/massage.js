@@ -6,14 +6,19 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const API_AUTH_KEY = process.env.API_AUTH_KEY;
 
 const app = express();
-app.use(cors()); // Kunna CORS
+app.use(cors()); 
 app.use(express.json());
 
-app.options("*", (req, res) => {
-  res.status(200).send("OK");
+app.options("*", cors());
+
+app.options("/api/message", (req, res) => {
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.status(204).end();
 });
 
-app.post("/", (req, res) => {
+app.post("/api/message", (req, res) => {
   // Binciken Origin domin hana CORS attack
   const origin = req.headers.origin;
   if (origin !== "https://agrofruit.pages.dev") {
