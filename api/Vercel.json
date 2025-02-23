@@ -1,0 +1,6 @@
+{
+  "routes": [
+    { "src": "/api/webhook", "dest": "/api/webhook.js" },
+    { "src": "/api/massage", "dest": "/api/massage.js" }
+  ]
+} 
