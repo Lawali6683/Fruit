@@ -1,0 +1,15 @@
+{
+  "name": "fruit",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node api/webhook.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^10.0.0"
+  },
+  "devDependencies": {},
+  "author": "",
+  "license": "ISC"
+} 
