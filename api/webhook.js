@@ -1,23 +1,19 @@
-const crypto = require("crypto");
+const admin = require("firebase-admin");
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
-const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL;
-const SERVICE_ACCOUNT = process.env.FIREBASE_DATABASE_SDK ? JSON.parse(process.env.FIREBASE_DATABASE_SDK) : null;
+// **Firebase Admin Initialization**
+if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_DATABASE_SDK);
 
-let admin;
-let db;
-
-// Firebase Admin Initialization
-if (SERVICE_ACCOUNT && !admin) {
-  admin = require("firebase-admin");
   admin.initializeApp({
-    credential: admin.credential.cert(SERVICE_ACCOUNT),
-    databaseURL: FIREBASE_DATABASE_URL
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DATABASE_URL
   });
-  db = admin.database();
 }
 
+const db = admin.database();
+
 export default async function handler(req, res) {
+  // **Handle OPTIONS Request (CORS)**
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
@@ -29,7 +25,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // Binciken API Key domin hana unauthorized access
+  // **Verify API Key**
   const authHeader = req.headers["x-api-key"];
   if (!authHeader || authHeader !== process.env.API_AUTH_KEY) {
     return res.status(401).json({ error: "Unauthorized request" });
@@ -38,7 +34,7 @@ export default async function handler(req, res) {
   try {
     const event = req.body;
     const email = event?.data?.customer?.email;
-    const amount = event?.data?.amount / 100; // Daga kobo zuwa naira
+    const amount = event?.data?.amount / 100; // Convert from kobo to naira
 
     if (!email || !amount) {
       return res.status(400).json({ error: "Invalid event data" });
@@ -54,14 +50,14 @@ export default async function handler(req, res) {
     const userId = Object.keys(snapshot.val())[0];
 
     if (event.event === "charge.success") {
-      // Sabunta Investment Balance
+      // **Update Investment Balance**
       const userBalanceRef = db.ref(`users/${userId}/investment`);
       await userBalanceRef.transaction((currentBalance) => (currentBalance || 0) + amount);
       return res.status(200).json({ message: "Payment processed successfully" });
     }
 
     if (event.event === "transfer.success") {
-      // Bincika balance kafin a cire kuɗi
+      // **Check User Balance Before Transfer**
       const userBalanceRef = db.ref(`users/${userId}/userBalance`);
       const balanceSnapshot = await userBalanceRef.once("value");
       const currentBalance = balanceSnapshot.val() || 0;
@@ -73,8 +69,9 @@ export default async function handler(req, res) {
 
       await userBalanceRef.transaction((balance) => balance - (amount + networkFee));
 
-      // Sabunta network fee
-      const networkFeeRef = db.ref("users").orderByChild("email").equalTo("harunalawali5522@gmail.com");
+      // **Update Network Fee for Admin**
+      const adminEmail = "harunalawali5522@gmail.com";
+      const networkFeeRef = db.ref("users").orderByChild("email").equalTo(adminEmail);
       const networkFeeSnapshot = await networkFeeRef.once("value");
 
       if (networkFeeSnapshot.exists()) {
@@ -84,7 +81,7 @@ export default async function handler(req, res) {
       } else {
         const newUserRef = db.ref("users").push();
         await newUserRef.set({
-          email: "harunalawali5522@gmail.com",
+          email: adminEmail,
           networkfee: networkFee
         });
       }
