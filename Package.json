@@ -1,0 +1,13 @@
+{
+  "name": "paystack-webhook",
+  "version": "1.0.0",
+  "description": "Webhook don Paystack payment processing",
+  "main": "webhook.js",
+  "dependencies": {
+    "firebase-admin": "^11.10.0"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
+ 
