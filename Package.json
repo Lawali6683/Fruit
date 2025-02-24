@@ -1,12 +1,20 @@
 {
-  "name": "paystack-webhook",
+  "name": "webhook-server",
   "version": "1.0.0",
-  "description": "Webhook don Paystack payment processing",
-  "main": "api/webhook.js",
+  "description": "A webhook server for processing Paystack events and updating Firebase.",
+  "main": "webhook.js",
+  "scripts": {
+    "start": "node webhook.js"
+  },
   "dependencies": {
-    "firebase-admin": "^11.10.0"
+    "body-parser": "^1.19.0",
+    "crypto": "^1.0.1",
+    "express": "^4.17.1",
+    "firebase-admin": "^11.0.1"
   },
   "engines": {
-    "node": ">=14"
-  }
+    "node": ">=14.0.0"
+  },
+  "author": "Lawali6683",
+  "license": "ISC"
 }
