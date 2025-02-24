@@ -2,9 +2,9 @@
   "name": "webhook-server",
   "version": "1.0.0",
   "description": "A webhook server for processing Paystack events and updating Firebase.",
-  "main": "webhook.js",
+  "main": "api/webhook.js",
   "scripts": {
-    "start": "node webhook.js"
+    "start": "node api/webhook.js"
   },
   "dependencies": {
     "body-parser": "^1.19.0",
@@ -13,7 +13,7 @@
     "firebase-admin": "^11.0.1"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": "18.x"
   },
   "author": "Lawali6683",
   "license": "ISC"
