@@ -37,12 +37,29 @@ function verifyPaystackSignature(req, res, next) {
 app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
   try {
     const event = req.body;
+    const transactionId = event?.data?.id; // Unique transaction ID daga Paystack
     const email = event?.data?.customer?.email;
     const amount = event?.data?.amount / 100; // Convert from kobo to naira
 
-    if (!email || !amount) {
+    if (!transactionId || !email || !amount) {
       return res.status(400).send("Invalid event data");
     }
+
+    // **Duba ko wannan transaction ID ya riga ya yi amfani**
+    const transactionRef = db.ref(`transactions/${transactionId}`);
+    const transactionSnapshot = await transactionRef.once('value');
+
+    if (transactionSnapshot.exists()) {
+      return res.status(400).send("Duplicate transaction detected");
+    }
+
+    // **Adana wannan transaction domin hana sake amfani da shi**
+    await transactionRef.set({
+      email,
+      amount,
+      event: event.event,
+      timestamp: Date.now()
+    });
 
     // Nemo user a database
     const userRef = db.ref('users').orderByChild('email').equalTo(email);
