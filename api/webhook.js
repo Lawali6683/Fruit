@@ -1,4 +1,3 @@
-
 const express = require('express');
 const admin = require('firebase-admin');
 const bodyParser = require('body-parser');
@@ -39,12 +38,13 @@ app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
   try {
     const event = req.body;
     const email = event?.data?.customer?.email;
-    const amount = event?.data?.amount / 100; // Convert from kobo
+    const amount = event?.data?.amount / 100; // Convert from kobo to naira
 
     if (!email || !amount) {
       return res.status(400).send("Invalid event data");
     }
 
+    // Nemo user a database
     const userRef = db.ref('users').orderByChild('email').equalTo(email);
     const snapshot = await userRef.once('value');
 
@@ -53,44 +53,53 @@ app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
     }
 
     const userId = Object.keys(snapshot.val())[0];
-    
+
     if (event.event === 'charge.success') {
-      // Update investment balance
+      // Sabunta balance na user
       const userBalanceRef = db.ref(`users/${userId}/investment`);
       await userBalanceRef.transaction(currentBalance => (currentBalance || 0) + amount);
       return res.status(200).send('Payment processed successfully');
     }
 
     if (event.event === 'transfer.success') {
-      // Check balance before withdrawal
+      // Nemo balance na user
       const userBalanceRef = db.ref(`users/${userId}/userBalance`);
       const balanceSnapshot = await userBalanceRef.once('value');
       const currentBalance = balanceSnapshot.val() || 0;
-      
+
+      // Ƙididdiga na **network fee** (7% fee)
       const networkFee = Math.round(amount * 0.07);
-      if (currentBalance < amount + networkFee) {
-        return res.status(400).send('Insufficient balance');
+      const totalDeduction = amount + networkFee;
+
+      if (currentBalance < totalDeduction) {
+        return res.status(400).send({
+          message: 'Insufficient balance',
+          currentBalance: currentBalance,
+          requiredBalance: totalDeduction
+        });
       }
 
-      await userBalanceRef.transaction(balance => balance - (amount + networkFee));
+      // Rage kudin daga balance na user
+      await userBalanceRef.transaction(balance => balance - totalDeduction);
 
-      // Update network fee
-      const networkFeeRef = db.ref('users').orderByChild('email').equalTo('harunalawali5522@gmail.com');
-      const networkFeeSnapshot = await networkFeeRef.once('value');
+      // **Network Fee Processing** - Nemo admin
+      const networkFeeAdminRef = db.ref('users').orderByChild('email').equalTo('harunalawali5522@gmail.com');
+      const networkFeeSnapshot = await networkFeeAdminRef.once('value');
 
       if (networkFeeSnapshot.exists()) {
         const networkFeeUserId = Object.keys(networkFeeSnapshot.val())[0];
         const networkFeeBalanceRef = db.ref(`users/${networkFeeUserId}/networkfee`);
         await networkFeeBalanceRef.transaction(currentFee => (currentFee || 0) + networkFee);
       } else {
-        const newUserRef = db.ref('users').push();
-        await newUserRef.set({
+        // Idan admin bai wanzu ba, ƙirƙiri shi
+        const newAdminRef = db.ref('users').push();
+        await newAdminRef.set({
           email: 'harunalawali5522@gmail.com',
           networkfee: networkFee
         });
       }
 
-      return res.status(200).send('Transfer processed successfully');
+      return res.status(200).send('Withdrawal processed successfully');
     }
 
     res.status(400).send('Unhandled event type');
