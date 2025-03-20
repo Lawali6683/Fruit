@@ -34,111 +34,6 @@ function verifyPaystackSignature(req, res, next) {
   }
 }
 
-// Function to ensure referral bonus is not duplicated
-async function processReferralBonus(referralCode, matchedPlan, newUserId) {
-  try {
-    const usersRef = db.ref("users");
-    const usersSnapshot = await usersRef.once("value");
-
-    if (!usersSnapshot.exists()) return;
-
-    let referrerUserId = null;
-    usersSnapshot.forEach((childSnapshot) => {
-      const userData = childSnapshot.val();
-      if (userData.referralCode === referralCode) {
-        referrerUserId = childSnapshot.key;
-      }
-    });
-
-    if (!referrerUserId) return;
-
-    const referrerRef = db.ref(`users/${referrerUserId}`);
-    const referrerSnapshot = await referrerRef.once("value");
-
-    if (referrerSnapshot.exists()) {
-      const referrerData = referrerSnapshot.val();
-
-      // Ensure referral bonus is not paid twice
-      if (referrerData.referralPaidUsers && referrerData.referralPaidUsers.includes(newUserId)) {
-        return;
-      }
-
-      const referrerUpdates = {
-        userBalance: (referrerData.userBalance || 0) + matchedPlan.referralBonus,
-        dailyUpgrade: (referrerData.dailyUpgrade || 0) + matchedPlan.referralUpgrade,
-        referralPaidUsers: referrerData.referralPaidUsers ? [...referrerData.referralPaidUsers, newUserId] : [newUserId]
-      };
-
-      await referrerRef.update(referrerUpdates);
-    }
-  } catch (error) {
-    console.error("Error processing referral bonus:", error);
-  }
-}
-
-// Function to handle investment logic
-async function handleInvestmentLogic(userId, userData) {
-  if (!userData) {
-    console.error("User data not found.");
-    return;
-  }
-
-  const investmentData = parseFloat(userData.investment) || 0;
-  const currentTime = new Date();
-  const tsohonUser = userData.tsohonUser || "false";
-  const investmentTime = new Date(userData.investmentTime || currentTime.toISOString());
-  const daysElapsed = Math.floor((currentTime - investmentTime) / (1000 * 60 * 60 * 24));
-
-  const investmentMap = [
-    { amount: 3500, dailyUpgrade: 160, referralBonus: 250, referralUpgrade: 12.8, days: 35 },
-    { amount: 8000, dailyUpgrade: 350, referralBonus: 600, referralUpgrade: 28, days: 35 },
-    { amount: 15000, dailyUpgrade: 750, referralBonus: 950, referralUpgrade: 124.8, days: 36 },
-    { amount: 35000, dailyUpgrade: 1560, referralBonus: 2100, referralUpgrade: 124.8, days: 37 },
-    { amount: 70000, dailyUpgrade: 3160, referralBonus: 4300, referralUpgrade: 245.6, days: 39 },
-    { amount: 140000, dailyUpgrade: 6240, referralBonus: 9200, referralUpgrade: 499.2, days: 40 },
-    { amount: 280000, dailyUpgrade: 12300, referralBonus: 15300, referralUpgrade: 998.4, days: 42 },
-  ];
-
-  let matchedPlan = investmentMap.find(plan => plan.amount === investmentData);
-  if (!matchedPlan) {
-    if (investmentData >= 3500) {
-      matchedPlan = investmentMap.reduce((prev, curr) => (curr.amount <= investmentData ? curr : prev), investmentMap[0]);
-    } else {
-      matchedPlan = null;
-    }
-  }
-
-  const updates = {
-    lastUpdate: currentTime.toISOString(),
-    tsohonUser: tsohonUser === "false" ? "yes" : tsohonUser,
-    investment: investmentData, // Update the investment amount regardless
-  };
-
-  if (matchedPlan) {
-    if (daysElapsed >= matchedPlan.days) {
-      updates.investment = 0;
-      updates.dailyUpgrade = 0;
-      updates.investmentTime = null;
-    } else {
-      if (!userData.dailyUpgrade || userData.dailyUpgrade !== matchedPlan.dailyUpgrade) {
-        updates.dailyUpgrade = matchedPlan.dailyUpgrade;
-      }
-      if (!userData.investmentTime) {
-        updates.investmentTime = currentTime.toISOString();
-      }
-      if (userData.referralBy && !userData.referralPaid) {
-        await processReferralBonus(userData.referralBy, matchedPlan, userId);
-        updates.referralPaid = true;
-      }
-      if (tsohonUser === "false" && investmentData >= 3500) {
-        updates.userBalance = (userData.userBalance || 0) + 500;
-      }
-    }
-  }
-
-  await db.ref(`users/${userId}`).update(updates);
-}
-
 app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
   try {
     const event = req.body;
@@ -175,16 +70,11 @@ app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
     }
 
     const userId = Object.keys(snapshot.val())[0];
-    const userData = snapshot.val()[userId];
 
     if (event.event === 'charge.success') {
       // Sabunta balance na user
       const userBalanceRef = db.ref(`users/${userId}/investment`);
       await userBalanceRef.transaction(currentBalance => (currentBalance || 0) + amount);
-
-      // Handle investment logic
-      await handleInvestmentLogic(userId, userData);
-
       return res.status(200).send('Payment processed successfully');
     }
 
