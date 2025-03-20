@@ -101,7 +101,7 @@ async function handleInvestmentLogic(userId, userData) {
 
   let matchedPlan = investmentMap.find(plan => plan.amount === investmentData);
   if (!matchedPlan) {
-    if (investmentData > 3500) {
+    if (investmentData >= 3500) {
       matchedPlan = investmentMap.reduce((prev, curr) => (curr.amount <= investmentData ? curr : prev), investmentMap[0]);
     } else {
       matchedPlan = null;
