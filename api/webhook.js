@@ -2,13 +2,17 @@ const express = require('express');
 const admin = require('firebase-admin');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
+const emailjs = require('emailjs-com');
 
 const app = express();
 app.use(bodyParser.json());
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL;
 const SERVICE_ACCOUNT = process.env.FIREBASE_DATABASE_SDK ? JSON.parse(process.env.FIREBASE_DATABASE_SDK) : null;
+const MONIEPOINT_SECRET_KEY = process.env.MONIEPOINT_SECRET_KEY;
+const EMAILJS_SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+const EMAILJS_USER_ID = process.env.EMAILJS_USER_ID;
 
 // Initialize Firebase Admin
 if (SERVICE_ACCOUNT) {
@@ -23,110 +27,78 @@ if (SERVICE_ACCOUNT) {
 
 const db = admin.database();
 
-// Middleware to verify Paystack signature
-function verifyPaystackSignature(req, res, next) {
-  if (!req.headers['x-paystack-signature']) return res.status(401).send('Signature missing');
-  const hash = crypto.createHmac('sha512', PAYSTACK_SECRET_KEY).update(JSON.stringify(req.body)).digest('hex');
-  if (hash === req.headers['x-paystack-signature']) {
-    next();
-  } else {
-    res.status(401).send('Unauthorized');
+app.post('/webhook', async (req, res) => {
+  // Verify Moniepoint Secret Key
+  const signature = req.headers['x-moniepoint-signature'];
+  if (!signature || signature !== MONIEPOINT_SECRET_KEY) {
+    return res.status(401).json({ error: 'Unauthorized request' });
   }
-}
 
-app.post('/api/webhook', verifyPaystackSignature, async (req, res) => {
+  const { amount, accountNumber } = req.body;
+
+  if (!amount || !accountNumber) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
   try {
-    const event = req.body;
-    const transactionId = event?.data?.id; // Unique transaction ID daga Paystack
-    const email = event?.data?.customer?.email;
-    const amount = event?.data?.amount / 100; // Convert from kobo to naira
+    // Check paymentPending for matching amount and accountNumber
+    const paymentPendingRef = db.ref('paymentPending');
+    const snapshot = await paymentPendingRef.once('value');
+    let paymentPendingId = null;
+    let email = null;
 
-    if (!transactionId || !email || !amount) {
-      return res.status(400).send("Invalid event data");
-    }
-
-    // **Duba ko wannan transaction ID ya riga ya yi amfani**
-    const transactionRef = db.ref(`transactions/${transactionId}`);
-    const transactionSnapshot = await transactionRef.once('value');
-
-    if (transactionSnapshot.exists()) {
-      return res.status(400).send("Duplicate transaction detected");
-    }
-
-    // **Adana wannan transaction domin hana sake amfani da shi**
-    await transactionRef.set({
-      email,
-      amount,
-      event: event.event,
-      timestamp: Date.now()
+    snapshot.forEach(childSnapshot => {
+      const data = childSnapshot.val();
+      if (data.amount === amount && data.accountNumber === accountNumber && data.status === 'pending') {
+        paymentPendingId = childSnapshot.key;
+        email = data.email;
+      }
     });
 
-    // Nemo user a database
-    const userRef = db.ref('users').orderByChild('email').equalTo(email);
-    const snapshot = await userRef.once('value');
-
-    if (!snapshot.exists()) {
-      return res.status(404).send('User not found');
+    if (!paymentPendingId || !email) {
+      return res.status(404).json({ error: 'Payment not found' });
     }
 
-    const userId = Object.keys(snapshot.val())[0];
+    // Update payment status to true
+    await paymentPendingRef.child(paymentPendingId).update({ status: 'true' });
 
-    if (event.event === 'charge.success') {
-      // Sabunta balance na user
-      const userBalanceRef = db.ref(`users/${userId}/investment`);
-      await userBalanceRef.transaction(currentBalance => (currentBalance || 0) + amount);
-      return res.status(200).send('Payment processed successfully');
+    // Update user investment amount
+    const usersRef = db.ref('users');
+    const userSnapshot = await usersRef.orderByChild('email').equalTo(email).once('value');
+
+    if (!userSnapshot.exists()) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    if (event.event === 'transfer.success') {
-      // Nemo balance na user
-      const userBalanceRef = db.ref(`users/${userId}/userBalance`);
-      const balanceSnapshot = await userBalanceRef.once('value');
-      const currentBalance = balanceSnapshot.val() || 0;
+    userSnapshot.forEach(async userChild => {
+      const userId = userChild.key;
+      const userData = userChild.val();
+      const newInvestmentAmount = (parseFloat(userData.investment) || 0) + parseFloat(amount);
 
-      // Ƙididdiga na **network fee** (7% fee)
-      const networkFee = Math.round(amount * 0.07);
-      const totalDeduction = amount + networkFee;
+      await usersRef.child(userId).update({ investment: newInvestmentAmount.toString() });
 
-      if (currentBalance < totalDeduction) {
-        return res.status(400).send({
-          message: 'Insufficient balance',
-          currentBalance: currentBalance,
-          requiredBalance: totalDeduction
+      // Send confirmation email using emailjs
+      const templateParams = {
+        to_name: userData.fullName,
+        to_email: email,
+        amount: amount,
+        login_link: 'https://agrofruit.pages.dev'
+      };
+
+      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams, EMAILJS_USER_ID)
+        .then(response => {
+          console.log('Email sent successfully:', response.status, response.text);
+        })
+        .catch(error => {
+          console.error('Error sending email:', error);
         });
-      }
+    });
 
-      // Rage kudin daga balance na user
-      await userBalanceRef.transaction(balance => balance - totalDeduction);
-
-      // **Network Fee Processing** - Nemo admin
-      const networkFeeAdminRef = db.ref('users').orderByChild('email').equalTo('harunalawali5522@gmail.com');
-      const networkFeeSnapshot = await networkFeeAdminRef.once('value');
-
-      if (networkFeeSnapshot.exists()) {
-        const networkFeeUserId = Object.keys(networkFeeSnapshot.val())[0];
-        const networkFeeBalanceRef = db.ref(`users/${networkFeeUserId}/networkfee`);
-        await networkFeeBalanceRef.transaction(currentFee => (currentFee || 0) + networkFee);
-      } else {
-        // Idan admin bai wanzu ba, ƙirƙiri shi
-        const newAdminRef = db.ref('users').push();
-        await newAdminRef.set({
-          email: 'harunalawali5522@gmail.com',
-          networkfee: networkFee
-        });
-      }
-
-      return res.status(200).send('Withdrawal processed successfully');
-    }
-
-    res.status(400).send('Unhandled event type');
+    return res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error processing payment:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+module.exports = app;
