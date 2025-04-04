@@ -44,33 +44,32 @@ module.exports = async (req, res) => {
             return res.status(400).json({ error: "Missing required fields" });
         }
 
-        const userRef = db.ref("users").orderByChild("email").equalTo(email);
-        userRef.once("value", async (snapshot) => {
+        const userPaymentRef = db.ref("paymentPending").orderByChild("email").equalTo(email);
+        
+        userPaymentRef.once("value", async snapshot => {
             if (snapshot.exists()) {
-                const userData = snapshot.val();
-                const userId = Object.keys(userData)[0];
-                const userRequirementsRef = db.ref(`userRequirements/${userId}`);
+                const oldPaymentKey = Object.keys(snapshot.val())[0];
+                await db.ref(`paymentPending/${oldPaymentKey}`).remove();
+            }
 
-                // Add new requirement
-                const newRequirementRef = userRequirementsRef.push();
-                const requirementData = {
-                    amount,
-                    email,
-                    senderAccount,
-                    accountName,
-                    status: "pending",
-                    time: new Date().toISOString()
-                };
+            const paymentPendingRef = db.ref("paymentPending").push();
+            const paymentPendingId = paymentPendingRef.key;
 
-                try {
-                    await newRequirementRef.set(requirementData);
-                    return res.status(200).json({ success: true, requirementId: newRequirementRef.key });
-                } catch (error) {
-                    console.error("Error storing requirement data: ", error);
-                    return res.status(500).json({ error: "Internal Server Error" });
-                }
-            } else {
-                return res.status(404).json({ error: "User not found" });
+            const paymentData = {
+                amount,
+                email,
+                senderAccount,
+                accountName,
+                status: "pending",
+                time: new Date().toISOString()
+            };
+
+            try {
+                await paymentPendingRef.set(paymentData);
+                return res.status(200).json({ success: true, paymentPendingId });
+            } catch (error) {
+                console.error("Error storing payment data: ", error);
+                return res.status(500).json({ error: "Internal Server Error" });
             }
         });
     } else {
