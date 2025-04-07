@@ -17,7 +17,7 @@ if (!admin.apps.length) {
 const db = admin.database();
 const EMAIL_USER = "agrofruitenterprises@gmail.com";
 const EMAIL_PASS = "ciivajkuisyifeux";
-const MONIEPOINT_SECRET = "003a42b34ed141a28d52c36b6af67d9c_aae5f4"; // secret for validation
+const MONIEPOINT_SECRET = "dfffc3b26e05439eb68b7693da1fa9b0_126ef8"; // secret for validation
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
