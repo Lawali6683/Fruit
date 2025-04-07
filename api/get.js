@@ -87,8 +87,7 @@ module.exports = async (req, res) => {
 
                         if (!referrerData.referralPaidUsers || !referrerData.referralPaidUsers.includes(userId)) {
                             const referrerUpdates = {
-                                userBalance: (referrerData.userBalance || 0) + updates.dailyUpgrade,
-                                dailyUpgrade: (referrerData.dailyUpgrade || 0) + updates.dailyUpgrade,
+                                userBalance: (referrerData.userBalance || 0) + 1000,
                                 referralPaidUsers: referrerData.referralPaidUsers ? [...referrerData.referralPaidUsers, userId] : [userId]
                             };
 
